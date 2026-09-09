@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gauge15: RFC 9651 Structured Field Values for C++</title>
+<meta name="description" content="A header-only C++20 implementation of RFC 9651, Structured Field Values for HTTP.">
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --ink: #1c1b19;
+    --ink-soft: #4a473f;
+    --rule: #d8d4c8;
+    --link: #1a4b8c;
+    --code-bg: #f1efe6;
+    --accent: #7a3b2e;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.62 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Source Serif Pro", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 4.5rem 1.25rem 6rem;
+  }
+  h1, h2, h3 {
+    font-family: "Iowan Old Style", Georgia, serif;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.25;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.3rem;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+    margin: 0 0 2.6rem;
+    font-style: italic;
+  }
+  h2 {
+    font-size: 1.25rem;
+    margin: 3rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-size: 1.02rem;
+    margin: 1.8rem 0 0.7rem;
+  }
+  p { margin: 0 0 1.05rem; }
+  ul, ol { margin: 0 0 1.05rem; padding-left: 1.4rem; }
+  li { margin-bottom: 0.3rem; }
+  a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--accent); }
+  code {
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 0.86em;
+    background: var(--code-bg);
+    padding: 0.12em 0.35em;
+    border-radius: 3px;
+  }
+  pre {
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    background: var(--code-bg);
+    padding: 1rem 1.15rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0 0 1.3rem;
+    border-left: 3px solid var(--rule);
+  }
+  pre code { background: none; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0 0 1.4rem;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.42rem 0.8rem 0.42rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th { font-weight: 600; color: var(--ink-soft); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  td code, th code { white-space: nowrap; }
+  .toc {
+    font-size: 0.95rem;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 1.1rem 0;
+    margin: 0 0 2.8rem;
+  }
+  .toc ol { list-style: none; padding-left: 0; margin: 0; columns: 2; column-gap: 2rem; }
+  .toc li { margin-bottom: 0.35rem; }
+  .toc a { color: var(--ink-soft); text-decoration: none; }
+  .toc a:hover { color: var(--link); text-decoration: underline; }
+  .meta {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    margin-top: -0.4rem;
+    margin-bottom: 2rem;
+  }
+  .keyword { font-variant: small-caps; font-weight: 600; }
+  blockquote {
+    margin: 0 0 1.3rem;
+    padding-left: 1rem;
+    border-left: 3px solid var(--accent);
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+  }
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) {
+    .toc ol { columns: 1; }
+    body { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>gauge15</h1>
+<p class="subtitle">Structured Field Values for HTTP, RFC 9651, in header-only C++20.</p>
+<p class="meta">Version 1.0 &middot; <a href="https://www.rfc-editor.org/rfc/rfc9651.html">RFC 9651</a> conformant &middot; MIT licensed</p>
+
+<nav class="toc">
+<ol>
+<li><a href="#overview">1. Overview</a></li>
+<li><a href="#scope">2. Scope</a></li>
+<li><a href="#data-model">3. Data model</a></li>
+<li><a href="#interface">4. Interface</a></li>
+<li><a href="#examples">5. Examples</a></li>
+<li><a href="#design">6. Design notes</a></li>
+<li><a href="#conformance">7. Conformance and testing</a></li>
+<li><a href="#building">8. Building</a></li>
+<li><a href="#references">9. References</a></li>
+</ol>
+</nav>
+
+<h2 id="overview">1. Overview</h2>
+<p>Structured Field Values are a syntax for HTTP header and trailer values, defined by <a href="https://www.rfc-editor.org/rfc/rfc9651.html">RFC 9651</a>. Headers such as <code>Priority</code>, <code>Accept-CH</code>, and <code>Sec-CH-UA</code> use this syntax. It defines a small closed set of data types (integers, decimals, strings, tokens, byte sequences, booleans, dates, and display strings) and three containers (items, lists, and dictionaries), each with an exact, deterministic parsing and serialization algorithm.</p>
+<p>gauge15 implements that algorithm directly against the RFC text, section by section, with no dependencies beyond the C++ standard library. It is a parser and serializer only. It does not open sockets, does not know what a request or a response is, and has no opinion about which HTTP library sits in front of it.</p>
+
+<h2 id="scope">2. Scope</h2>
+<p>RFC 9651 obsoletes RFC 8941. The two differ by two data types, Date and Display String, added in 9651. gauge15 targets 9651, since a 9651-conformant parser reads everything a 8941-conformant one does, and the reverse is not true.</p>
+<p>The library does not implement RFC 9110's field-line-combining step (joining repeated header instances with <code>", "</code>) or byte-to-ASCII conversion. Both are the caller's responsibility, since both depend on the transport the caller is using and neither is specific to Structured Fields.</p>
+
+<h2 id="data-model">3. Data model</h2>
+<p>Eight bare item types, per <a href="https://www.rfc-editor.org/rfc/rfc9651.html#section-3.3">RFC 9651 §3.3</a>:</p>
+<table>
+<tr><th>Type</th><th>C++ representation</th><th>Wire example</th></tr>
+<tr><td>Integer</td><td><code>int64_t</code></td><td><code>42</code></td></tr>
+<tr><td>Decimal</td><td><code>sfv::Decimal</code></td><td><code>4.5</code></td></tr>
+<tr><td>String</td><td><code>std::string</code></td><td><code>"hello"</code></td></tr>
+<tr><td>Token</td><td><code>sfv::Token</code></td><td><code>gzip</code></td></tr>
+<tr><td>Byte Sequence</td><td><code>sfv::ByteSequence</code></td><td><code>:cHJldGVuZA==:</code></td></tr>
+<tr><td>Boolean</td><td><code>bool</code></td><td><code>?1</code></td></tr>
+<tr><td>Date</td><td><code>sfv::Date</code></td><td><code>@1659578233</code></td></tr>
+<tr><td>Display String</td><td><code>sfv::DisplayString</code></td><td><code>%"caf%c3%a9"</code></td></tr>
+</table>
+<p>A bare item plus its parameters forms an <code>Item</code>. An ordered sequence of items with its own parameters forms an <code>InnerList</code>. A <code>List</code> is a sequence of items and inner lists. A <code>Dictionary</code> is an ordered, unique-keyed mapping from strings to items or inner lists, where re-assigning an existing key overwrites its value in place rather than moving it to the end of the sequence.</p>
+<p><code>Token</code> is a distinct wrapper type rather than reused <code>std::string</code>, since a Structured Field parser must keep tokens and strings distinguishable, and C++ has no native type for one that does not also fit the other.</p>
+
+<h2 id="interface">4. Interface</h2>
+<p>Four functions cover the whole public surface:</p>
+<pre><code>sfv::Result&lt;sfv::Item&gt;       sfv::parse_item(std::string_view);
+sfv::Result&lt;sfv::List&gt;       sfv::parse_list(std::string_view);
+sfv::Result&lt;sfv::Dictionary&gt; sfv::parse_dictionary(std::string_view);
+
+sfv::Result&lt;std::string&gt;     sfv::serialize(const sfv::Item&);
+sfv::Result&lt;std::string&gt;     sfv::serialize(const sfv::List&);
+sfv::Result&lt;std::string&gt;     sfv::serialize(const sfv::Dictionary&);</code></pre>
+<p><code>Result&lt;T&gt;</code> holds either a value or an <code>Error</code> (a message and a byte offset). RFC 9651 §1.1 states that parse failure is the field's only defined error behaviour, a normal outcome rather than an exceptional one, so the library returns it rather than throwing.</p>
+<p>Everything under <code>sfv::detail::</code> is the implementation these four functions are assembled from: one function per RFC subsection, named to match it (<code>detail::parse_integer_or_decimal</code> is §4.2.4, <code>detail::serialize_dictionary</code> is §4.1.2, and so on). It is reachable, for anyone who needs a single container's algorithm in isolation, but is not the intended entry point.</p>
+
+<h2 id="examples">5. Examples</h2>
+<h3>Item, with a parameter</h3>
+<pre><code>auto r = sfv::parse_item("42;foo=?1");
+// r.value().value  == sfv::BareItem{int64_t{42}}
+// r.value().params == {"foo": true}
+
+sfv::serialize(r.value()).value();
+// "42;foo"   -- Boolean true parameters omit their value on output</code></pre>
+
+<h3>List, with an inner list</h3>
+<pre><code>auto r = sfv::parse_list("sugar, tea, (\"milk\" \"honey\");source=farm");
+// r.value()[0], r.value()[1] : Item      (Token "sugar", Token "tea")
+// r.value()[2]               : InnerList (String "milk", String "honey"),
+//                               params = {"source": Token "farm"}</code></pre>
+
+<h3>Dictionary, with the boolean shorthand</h3>
+<pre><code>auto r = sfv::parse_dictionary("u=1, a=?0, c");
+// r.value().get("u") -> Item{int64_t{1}, {}}
+// r.value().get("c") -> Item{true, {}}       -- bare key means true
+
+sfv::serialize(r.value()).value();
+// "u=1, a=?0, c"</code></pre>
+
+<h2 id="design">6. Design notes</h2>
+<h3>Decimal is fixed-point</h3>
+<p><code>sfv::Decimal</code> stores its value as an <code>int64_t</code> scaled by 1000, not as <code>double</code>. RFC 9651's Decimal is defined with an exact three-digit fractional limit and round-trips exactly; IEEE 754 binary64 cannot represent many such values exactly, 0.1 among them. The fixed-point representation has no such gap.</p>
+<h3>Ordered map, not <code>std::map</code></h3>
+<p>Parameters and Dictionary are both specified as ordered maps with unique keys, where re-setting an existing key overwrites its value without changing its position. Neither <code>std::map</code> nor <code>std::unordered_map</code> preserve that property, so the library defines its own, backed by a flat vector, which is also the faster choice at the sizes these containers actually reach in practice.</p>
+<h3>Self-rolled base64 and UTF-8</h3>
+<p>Byte Sequence needs base64; Display String needs UTF-8 validation strict enough to reject overlong encodings and surrogate code points, not merely to decode well-formed input. Both are implemented directly rather than pulled in as dependencies, keeping the library at zero dependencies beyond the standard library.</p>
+<h3>Single header</h3>
+<p>The distributed form is one generated file, produced from the real multi-file source by a small script that concatenates every header in dependency order and merges the include guards. It is not hand-maintained, and is verified against the same conformance suite as the source it is generated from before being committed.</p>
+
+<h2 id="conformance">7. Conformance and testing</h2>
+<p>Tested against the community-maintained <a href="https://github.com/httpwg/structured-field-tests">structured-field-tests</a> suite named in <a href="https://www.rfc-editor.org/rfc/rfc9651.html#appendix-B">RFC 9651 Appendix B</a>: <span class="num">1,395</span> checks, covering every data type and container the RFC defines, passing identically under GCC 13 and Clang 18 with zero warnings under <code>-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wsign-conversion</code>.</p>
+<p>Fuzzed with libFuzzer against all three top-level parse functions, seeded from every value in the conformance suite: <span class="num">10,027,412</span> executions, zero crashes, checking both crash-freedom and that parse–serialize–reparse round-trips to an equal value.</p>
+<blockquote>Neither of these is a claim of completeness. They are what has actually been checked, stated exactly, not rounded up.</blockquote>
+
+<h2 id="building">8. Building</h2>
+<pre><code># single file, drop into any project
+#include "gauge15/sfv.hpp"
+
+# or, from source
+mkdir build &amp;&amp; cd build &amp;&amp; cmake .. &amp;&amp; make &amp;&amp; ctest</code></pre>
+<p>C++20 required for structured bindings over <code>OrderedMap</code> iteration and <code>if constexpr</code> in the bare-item visitor. No third-party dependency, at any point, in the library itself.</p>
+
+<h2 id="references">9. References</h2>
+<ul>
+<li><a href="https://www.rfc-editor.org/rfc/rfc9651.html">RFC 9651</a>: Structured Field Values for HTTP</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc8941.html">RFC 8941</a>: the obsoleted predecessor</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2">RFC 9110 §5.2</a>: field-line combining, the caller's responsibility per §2 above</li>
+<li><a href="https://github.com/httpwg/structured-field-tests">httpwg/structured-field-tests</a>: the conformance suite this library is tested against</li>
+<li><a href="https://www.iana.org/assignments/http-fields/http-fields.xhtml">IANA HTTP Field Name Registry</a>: current list of header fields, including which use Structured Field syntax</li>
+</ul>
+
+<footer>
+gauge15. MIT licensed. Source at <code>include/gauge15/</code>; this document at <code>docs/index.html</code>.
+</footer>
+
+</main>
+</body>
+</html>

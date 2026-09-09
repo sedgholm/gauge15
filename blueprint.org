@@ -1,0 +1,254 @@
+#+TITLE: gauge15
+#+SUBTITLE: Structured Field Values for HTTP, RFC 9651, in header-only C++20
+#+DATE: 2026-08-12
+#+OPTIONS: toc:2 num:2
+
+* Overview
+:PROPERTIES:
+:CUSTOM_ID: overview
+:END:
+
+Structured Field Values are a syntax for HTTP header and trailer values,
+defined by [[https://www.rfc-editor.org/rfc/rfc9651.html][RFC 9651]]. Headers such as =Priority=, =Accept-CH=, and
+=Sec-CH-UA= use this syntax. It defines a small closed set of data types —
+integers, decimals, strings, tokens, byte sequences, booleans, dates, and
+display strings — and three containers: items, lists, and dictionaries. Each
+has an exact, deterministic parsing and serialization algorithm.
+
+gauge15 implements that algorithm directly against the RFC text, section by
+section, with no dependencies beyond the C++ standard library. It is a parser
+and serializer only. It does not open sockets, does not know what a request
+or a response is, and has no opinion about which HTTP library sits in front
+of it. Distributed under the MIT license (see =LICENSE=).
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+RFC 9651 obsoletes [[https://www.rfc-editor.org/rfc/rfc8941.html][RFC 8941]]. The two differ by two data types, Date and
+Display String, added in 9651. gauge15 targets 9651: a 9651-conformant
+parser reads everything a 8941-conformant one does, and the reverse is not
+true. Building against the superseded edition would have meant shipping
+something already out of date.
+
+The library does not implement [[https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2][RFC 9110 §5.2]]'s field-line-combining step
+(joining repeated header instances with =", "=) or byte-to-ASCII conversion.
+Both are the caller's responsibility: both depend on the transport the
+caller is using, and neither is specific to Structured Fields.
+
+* Data model
+:PROPERTIES:
+:CUSTOM_ID: data-model
+:END:
+
+Eight bare item types, per [[https://www.rfc-editor.org/rfc/rfc9651.html#section-3.3][RFC 9651 §3.3]]:
+
+| Type          | C++ representation    | Wire example        |
+|---------------+-----------------------+---------------------|
+| Integer       | =int64_t=             | =42=                |
+| Decimal       | =sfv::Decimal=        | =4.5=               |
+| String        | =std::string=         | ="hello"=           |
+| Token         | =sfv::Token=          | =gzip=              |
+| Byte Sequence | =sfv::ByteSequence=   | ~:cHJldGVuZA==:~    |
+| Boolean       | =bool=                | =?1=                |
+| Date          | =sfv::Date=           | =@1659578233=       |
+| Display String| =sfv::DisplayString=  | =%"caf%c3%a9"=      |
+
+A bare item together with its parameters forms an =Item=. A sequence of
+items, each with their own parameters, forms an =InnerList=; a =List= is a
+sequence of items and inner lists; a =Dictionary= is an ordered, unique-keyed
+mapping from strings to items or inner lists, where re-assigning an existing
+key overwrites its value in place rather than moving it to the end of the
+sequence.
+
+=Token= is a distinct wrapper type rather than a reused =std::string=,
+because a Structured Field parser must keep tokens and strings
+distinguishable, and C++ has no native string type that is clearly one and
+not the other.[fn:1]
+
+* Interface
+:PROPERTIES:
+:CUSTOM_ID: interface
+:END:
+
+Four functions cover the whole public surface:
+
+#+BEGIN_SRC cpp
+sfv::Result<sfv::Item>       sfv::parse_item(std::string_view);
+sfv::Result<sfv::List>       sfv::parse_list(std::string_view);
+sfv::Result<sfv::Dictionary> sfv::parse_dictionary(std::string_view);
+
+sfv::Result<std::string>     sfv::serialize(const sfv::Item&);
+sfv::Result<std::string>     sfv::serialize(const sfv::List&);
+sfv::Result<std::string>     sfv::serialize(const sfv::Dictionary&);
+#+END_SRC
+
+=Result<T>= holds either a value or an =Error=, and =Error= carries a message
+and a byte offset into the input. [[https://www.rfc-editor.org/rfc/rfc9651.html#section-1.1][RFC 9651 §1.1]] states that parse failure
+is the field's only defined error behaviour — a normal outcome, not an
+exceptional one — so the library returns it rather than throwing.
+=Result<T>= is a minimal stand-in for =std::expected=, which is C++23; the
+library targets C++20.
+
+Everything under =sfv::detail::= is the implementation these four functions
+are assembled from: one function per RFC subsection, named to match it
+(=detail::parse_integer_or_decimal= is §4.2.4, =detail::serialize_dictionary=
+is §4.1.2, and so on), so the RFC and the code can be read side by side. It
+is reachable for anyone who needs a single container's algorithm in
+isolation, but it is not the intended entry point.
+
+* Examples
+:PROPERTIES:
+:CUSTOM_ID: examples
+:END:
+
+** An item, with a parameter
+
+#+BEGIN_SRC cpp
+auto r = sfv::parse_item("42;foo=?1");
+// r.value().value  == sfv::BareItem{int64_t{42}}
+// r.value().params == {"foo": true}
+
+sfv::serialize(r.value()).value();
+// "42;foo"   -- Boolean true parameters omit their value on output
+#+END_SRC
+
+** A list, with an inner list
+
+#+BEGIN_SRC cpp
+auto r = sfv::parse_list("sugar, tea, (\"milk\" \"honey\");source=farm");
+// r.value()[0], r.value()[1] : Item      (Token "sugar", Token "tea")
+// r.value()[2]               : InnerList (String "milk", String "honey"),
+//                               params = {"source": Token "farm"}
+#+END_SRC
+
+** A dictionary, with the boolean shorthand
+
+#+BEGIN_SRC cpp
+auto r = sfv::parse_dictionary("u=1, a=?0, c");
+// r.value().get("u") -> Item{int64_t{1}, {}}
+// r.value().get("c") -> Item{true, {}}       -- bare key means true
+
+sfv::serialize(r.value()).value();
+// "u=1, a=?0, c"
+#+END_SRC
+
+* Design notes
+:PROPERTIES:
+:CUSTOM_ID: design
+:END:
+
+** Decimal is fixed-point
+
+=sfv::Decimal= stores its value as an =int64_t= scaled by 1000, not as a
+=double=. [[https://www.rfc-editor.org/rfc/rfc9651.html#section-3.3.2][RFC 9651 §3.3.2]] defines Decimal with an exact three-digit
+fractional limit that round-trips exactly, and IEEE 754 binary64 cannot
+represent many such values exactly — 0.1 among them. The fixed-point
+representation has no such gap.
+
+** Ordered map, not =std::map=
+
+Parameters and Dictionary are both specified as ordered maps with unique
+keys, where re-setting an existing key overwrites its value without changing
+its position. Neither =std::map= nor =std::unordered_map= preserves that
+property, so the library defines its own, backed by a flat vector — the
+right data structure at the sizes these containers actually reach, where a
+linear scan beats a tree or a hash table.
+
+** Self-rolled base64 and UTF-8
+
+Byte Sequence needs base64; Display String needs UTF-8 validation strict
+enough to reject overlong encodings, surrogate code points, and anything
+past U+10FFFF — not merely to decode well-formed input. Both are implemented
+directly, keeping the library at zero dependencies beyond the standard
+library. The base64 codec is checked against the [[https://www.rfc-editor.org/rfc/rfc4648.html][RFC 4648]] test vectors
+and implements the two leniencies RFC 9651 requires: missing padding
+tolerated on decode, non-zero pad bits not treated as failure.
+
+** Single header
+
+The distributed form is one generated file, =single_include/gauge15/sfv.hpp=,
+produced from the real multi-file source by =tools/amalgamate.py=, which
+concatenates every header in dependency order and merges the include guards.
+It is not hand-maintained, and it is run against the same conformance suite
+as the source it was generated from before being committed.
+
+* Conformance and testing
+:PROPERTIES:
+:CUSTOM_ID: conformance
+:END:
+
+Tested against the community-maintained
+[[https://github.com/httpwg/structured-field-tests][structured-field-tests]] suite named in
+[[https://www.rfc-editor.org/rfc/rfc9651.html#appendix-B][RFC 9651 Appendix B]]: 1,395 checks, covering every data type and container
+the RFC defines, passing identically under GCC 13 and Clang 18 with zero
+warnings under =-Wall -Wextra -Wpedantic -Wconversion -Wshadow
+-Wsign-conversion=.
+
+Fuzzed with libFuzzer against all three top-level parse functions, seeded
+from every value in the conformance suite: 10,027,412 executions, zero
+crashes, checking both crash-freedom and that parse–serialize–reparse
+round-trips to an equal value.[fn:2]
+
+The benchmark in =bench/bench.cpp= measures throughput on realistic header
+values — roughly 580,000 =parse_dictionary= calls per second on a 58-byte
+header, on one core of the machine this was written on.[fn:3]
+
+#+BEGIN_QUOTE
+Neither of these is a claim of completeness. They are what has actually been
+checked, stated exactly, not rounded up.
+#+END_QUOTE
+
+What has not been checked: the CI matrix under =.github/workflows/= has never
+run — nothing has been pushed anywhere until now — so MSVC has never compiled
+this code, and no production traffic has touched it. No amount of one-machine
+testing replaces that.
+
+* Building
+:PROPERTIES:
+:CUSTOM_ID: building
+:END:
+
+#+BEGIN_SRC sh
+mkdir build && cd build && cmake .. && make && ctest
+#+END_SRC
+
+C++20 is required, for structured bindings over =OrderedMap= iteration and
+=if constexpr= in the bare-item visitor. There is no third-party dependency
+at any point in the library itself.
+
+Single header usage — copy =single_include/gauge15/sfv.hpp= into any project and:
+
+#+BEGIN_SRC cpp
+#include "gauge15/sfv.hpp"
+#+END_SRC
+
+No other files needed; the API is identical to the multi-file build.
+
+* References
+:PROPERTIES:
+:CUSTOM_ID: references
+:END:
+
+- [[https://www.rfc-editor.org/rfc/rfc9651.html][RFC 9651]]: Structured Field Values for HTTP
+- [[https://www.rfc-editor.org/rfc/rfc8941.html][RFC 8941]]: the obsoleted predecessor
+- [[https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2][RFC 9110 §5.2]]: field-line combining, the caller's responsibility per Scope
+- [[https://www.rfc-editor.org/rfc/rfc4648.html][RFC 4648]]: base16/32/64, for Byte Sequence
+- [[https://github.com/httpwg/structured-field-tests][httpwg/structured-field-tests]]: the conformance suite this library is tested against
+- [[https://www.iana.org/assignments/http-fields/http-fields.xhtml][IANA HTTP Field Name Registry]]: the current list of header fields, including which use Structured Field syntax
+
+* Footnotes
+
+[fn:1] [[https://www.rfc-editor.org/rfc/rfc9651.html][RFC 9651]] Appendix B notes that a language whose native string type
+draws no Token/String distinction may need a wrapper to keep the two apart.
+
+[fn:2] The conformance suite encodes the binary type's value in base32, not
+base64 — "NBSWY3DP" is "hello". Decoding it as base64 first produced silently
+wrong expected bytes, and the tests failed with the wrong error rather than a
+crash. =tools/gen-test-cases.py= handles this leniently.
+
+[fn:3] A shared CPU is noisy trial to trial, so the benchmark reports a
+median over several trials and sinks its results into a =volatile= so an
+optimizer cannot elide the loop. One machine's number is a data point, not a
+portable result.

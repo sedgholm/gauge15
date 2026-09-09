@@ -1,0 +1,94 @@
+name: CI
+
+# This is the real answer to "only ever tested with one GCC on one Linux
+# sandbox" -- a matrix across three compilers and three OSes. It has not
+# been run yet as of this commit (that requires pushing to a real GitHub
+# repository, which this project hasn't been -- see the main README's
+# Testing & Validation section for exactly what HAS been verified
+# directly, versus what this workflow would verify once it runs).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - os: macos-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - os: windows-latest
+            compiler: msvc
+            cc: cl
+            cxx: cl
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure (Windows / MSVC)
+        if: runner.os == 'Windows'
+        run: cmake -B build
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --build-config Release
+
+  strict-warnings:
+    # Runs the same stricter warning set that caught 5 real
+    # signedness-conversion issues during development (see fuzz/README.md)
+    # -- kept as its own job so a warning regression fails CI distinctly
+    # from a test failure.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check headers under strict warnings
+        run: |
+          for f in include/gauge15/*.hpp include/gauge15/detail/*.hpp; do
+            clang++ -std=c++20 -Wall -Wextra -Wpedantic -Wconversion \
+              -Wshadow -Wsign-conversion -Wold-style-cast -Werror \
+              -c -x c++ "$f" -o /dev/null -Iinclude
+          done
+
+  fuzz-smoke:
+    # A short fuzzing run on every PR/push -- not a substitute for a real
+    # continuous fuzzing lane (e.g. OSS-Fuzz), but enough to catch a
+    # regression that a 60-second run would find, on every change rather
+    # than only when someone remembers to run fuzz/ manually.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build fuzzers
+        run: |
+          for name in item list dictionary; do
+            clang++ -std=c++20 -O1 -g -Iinclude \
+              -fsanitize=fuzzer,address,undefined \
+              fuzz/fuzz-$name.cpp -o fuzz/fuzz-$name
+          done
+      - name: Run each fuzzer for 60 seconds
+        run: |
+          for name in item list dictionary; do
+            ./fuzz/fuzz-$name fuzz/corpus/$name -max_total_time=60
+          done
