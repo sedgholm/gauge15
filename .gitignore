@@ -1,3 +1,10 @@
+fuzz/corpus/item/*
+!fuzz/corpus/item/seed-*
+fuzz/corpus/list/*
+!fuzz/corpus/list/seed-*
+fuzz/corpus/dictionary/*
+!fuzz/corpus/dictionary/seed-*
+
 gauge15.eml
 login_page.html
 
